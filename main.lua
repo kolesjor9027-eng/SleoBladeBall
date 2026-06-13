@@ -5,6 +5,9 @@
 local player = game.Players.LocalPlayer
 local userInputService = game:GetService("UserInputService")
 local runService = game:GetService("RunService")
+local replicatedStorage = game:GetService("ReplicatedStorage")
+local workspace = game:GetService("Workspace")
+local players = game:GetService("Players")
 local isMobile = userInputService.TouchEnabled
 
 -- Create UI
@@ -31,23 +34,46 @@ mainFrame.Draggable = true
 mainFrame.Visible = false
 mainFrame.Parent = screenGui
 
--- Minimized Logo Button (RGB)
-local logoButton = Instance.new("TextButton")
+-- Minimized Logo Button (RGB Circle)
+local logoButton = Instance.new("ImageButton")
 logoButton.Size = UDim2.new(0, 50 * scale, 0, 50 * scale)
 logoButton.Position = UDim2.new(0, 10, 0, 10)
-logoButton.Text = "SLEO"
-logoButton.Font = Enum.Font.GothamBold
-logoButton.TextSize = 14 * scale
+logoButton.BackgroundTransparency = 1
+logoButton.Image = "rbxassetid://0" -- Will be circle
 logoButton.BorderSizePixel = 0
 logoButton.Parent = screenGui
+
+-- Create circular frame for logo
+local logoFrame = Instance.new("Frame")
+logoFrame.Size = UDim2.new(1, 0, 1, 0)
+logoFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+logoFrame.BorderSizePixel = 0
+logoFrame.Parent = logoButton
+
+-- Make it circular
+local function makeCircle(frame)
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(1, 0)
+    corner.Parent = frame
+end
+makeCircle(logoFrame)
+
+-- Logo text
+local logoText = Instance.new("TextLabel")
+logoText.Size = UDim2.new(1, 0, 1, 0)
+logoText.Text = "SLEO"
+logoText.Font = Enum.Font.GothamBold
+logoText.TextSize = 14 * scale
+logoText.BackgroundTransparency = 1
+logoText.Parent = logoFrame
 
 -- RGB animation for logo
 spawn(function()
     local hue = 0
     while true do
         hue = (hue + 0.01) % 1
-        logoButton.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
-        logoButton.TextColor3 = Color3.fromHSV((hue + 0.5) % 1, 1, 1)
+        logoFrame.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
+        logoText.TextColor3 = Color3.fromHSV((hue + 0.5) % 1, 1, 1)
         task.wait(0.05)
     end
 end)
@@ -247,11 +273,13 @@ end)
 -- Close button hides everything
 closeButton.MouseButton1Click:Connect(function()
     mainFrame.Visible = false
+    logoButton.Visible = false
 end)
 
 -- Minimize button hides main frame but shows logo
 minimizeButton.MouseButton1Click:Connect(function()
     mainFrame.Visible = false
+    logoButton.Visible = true
 end)
 
 -- Remote Event
@@ -320,7 +348,173 @@ spawn(function()
     notification:Destroy()
 end)
 
--- Toggle function (works for both mouse and touch)
+-- Auto Parry System (from your code)
+local BASE_THRESHOLD = 0.2
+local VELOCITY_SCALING_FACTOR_FAST = 0.050
+local VELOCITY_SCALING_FACTOR_SLOW = 0.1
+local IMMEDIATE_PARRY_DISTANCE = 15
+local IMMEDIATE_HIGH_VELOCITY_THRESHOLD = 85
+local sliderValue = 20
+local isRunning = false
+local notifyparried = false
+local UseRage = false
+local focusedBall = nil
+local distanceVisualizer = nil
+
+local ballsFolder = workspace:WaitForChild("Balls")
+local parryButtonPress = replicatedStorage.Remotes.ParryButtonPress
+local abilityButtonPress = replicatedStorage.Remotes.AbilityButtonPress
+
+local character = player.Character or player.CharacterAdded:Wait()
+local PlayerGui = player:WaitForChild("PlayerGui")
+local Hotbar = PlayerGui:WaitForChild("Hotbar")
+local uigrad1 = Hotbar.Block.border1.UIGradient
+local uigrad2 = Hotbar.Ability.border2.UIGradient
+
+local function chooseNewFocusedBall()
+    local balls = ballsFolder:GetChildren()
+    for _, ball in ipairs(balls) do
+        if ball:GetAttribute("realBall") ~= nil and ball:GetAttribute("realBall") == true then
+            focusedBall = ball
+            print(focusedBall.Name)
+            break
+        elseif ball:GetAttribute("target") ~= nil then
+            focusedBall = ball
+            print(focusedBall.Name)
+            break
+        end
+    end
+    
+    if focusedBall == nil then
+        print("Debug: Could not find a ball that's the realBall or has a target.")
+        wait(1)
+        chooseNewFocusedBall()
+    end
+    return focusedBall
+end
+
+local function getDynamicThreshold(ballVelocityMagnitude)
+    if ballVelocityMagnitude > 60 then
+        return math.max(0.20, BASE_THRESHOLD - (ballVelocityMagnitude * VELOCITY_SCALING_FACTOR_FAST))
+    else
+        return math.min(0.01, BASE_THRESHOLD + (ballVelocityMagnitude * VELOCITY_SCALING_FACTOR_SLOW))
+    end
+end
+
+local function timeUntilImpact(ballVelocity, distanceToPlayer, playerVelocity)
+    if not character then return end
+    local directionToPlayer = (character.HumanoidRootPart.Position - focusedBall.Position).Unit
+    local velocityTowardsPlayer = ballVelocity:Dot(directionToPlayer) - playerVelocity:Dot(directionToPlayer)
+    
+    if velocityTowardsPlayer <= 0 then
+        return math.huge
+    end
+    
+    return (distanceToPlayer - sliderValue) / velocityTowardsPlayer
+end
+
+local function updateDistanceVisualizer()
+    local charPos = character and character.PrimaryPart and character.PrimaryPart.Position
+    if charPos and focusedBall then
+        if distanceVisualizer then
+            distanceVisualizer:Destroy()
+        end
+
+        local timeToImpactValue = timeUntilImpact(focusedBall.Velocity, (focusedBall.Position - charPos).Magnitude, character.PrimaryPart.Velocity)
+        local ballFuturePosition = focusedBall.Position + focusedBall.Velocity * timeToImpactValue
+
+        distanceVisualizer = Instance.new("Part")
+        distanceVisualizer.Size = Vector3.new(1, 1, 1)
+        distanceVisualizer.Anchored = true
+        distanceVisualizer.CanCollide = false
+        distanceVisualizer.Position = ballFuturePosition
+        distanceVisualizer.Parent = workspace    
+    end
+end
+
+local function checkIfTarget()
+    for _, v in pairs(ballsFolder:GetChildren()) do
+        if v:IsA("Part") and v.BrickColor == BrickColor.new("Really red") then 
+            print("Ball is targetting player.")
+            return true 
+        end 
+    end 
+    return false
+end
+
+local function isCooldownInEffect(uigradient)
+    return uigradient.Offset.Y < 0.5
+end
+
+local function checkBallDistance()
+    if not character or not checkIfTarget() then return end
+
+    local charPos = character.PrimaryPart.Position
+    local charVel = character.PrimaryPart.Velocity
+
+    if focusedBall and not focusedBall.Parent then
+        print("Focused ball lost parent. Choosing a new focused ball.")
+        chooseNewFocusedBall()
+    end
+    if not focusedBall then 
+        print("No focused ball.")
+        chooseNewFocusedBall()
+    end
+
+    local ball = focusedBall
+    local distanceToPlayer = (ball.Position - charPos).Magnitude
+    local ballVelocityTowardsPlayer = ball.Velocity:Dot((charPos - ball.Position).Unit)
+    
+    if distanceToPlayer < 15 then
+        parryButtonPress:Fire()
+        task.wait()
+    end
+
+    if timeUntilImpact(ball.Velocity, distanceToPlayer, charVel) < getDynamicThreshold(ballVelocityTowardsPlayer) then
+        if (character.Abilities["Raging Deflection"].Enabled or character.Abilities["Rapture"].Enabled) and UseRage == true then
+            if not isCooldownInEffect(uigrad2) then
+                abilityButtonPress:Fire()
+            end
+
+            if isCooldownInEffect(uigrad2) and not isCooldownInEffect(uigrad1) then
+                parryButtonPress:Fire()
+                if notifyparried == true then
+                    print("Auto Parry: Manually Parried Ball (Ability on CD)")
+                end
+            end
+
+        elseif not isCooldownInEffect(uigrad1) then
+            print(isCooldownInEffect(uigrad1))
+            parryButtonPress:Fire()
+            if notifyparried == true then
+                print("Auto Parry: Automatically Parried Ball")
+            end
+            task.wait(0.3)
+        end
+    end
+end
+
+local function autoParryCoroutine()
+    while isRunning do
+        checkBallDistance()
+        updateDistanceVisualizer()
+        task.wait()
+    end
+end
+
+local function startAutoParry()
+    print("Script successfully ran.")
+    chooseNewFocusedBall()
+    isRunning = true
+    local co = coroutine.create(autoParryCoroutine)
+    coroutine.resume(co)
+end
+
+local function stopAutoParry()
+    isRunning = false
+end
+
+-- Toggle functions
 local function setupToggle(toggleData, modName)
     toggleData.button.MouseButton1Click:Connect(function()
         toggleData.isOn = not toggleData.isOn
@@ -350,7 +544,35 @@ local function setupToggle(toggleData, modName)
     end
 end
 
-setupToggle(autoParryToggle, "autoParry")
+-- Setup Auto Parry toggle
+autoParryToggle.button.MouseButton1Click:Connect(function()
+    autoParryToggle.isOn = not autoParryToggle.isOn
+    if autoParryToggle.isOn then
+        autoParryToggle.button.Text = "ON"
+        autoParryToggle.button.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
+        startAutoParry()
+    else
+        autoParryToggle.button.Text = "OFF"
+        autoParryToggle.button.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+        stopAutoParry()
+    end
+end)
+
+if isMobile then
+    autoParryToggle.button.TouchTap:Connect(function()
+        autoParryToggle.isOn = not autoParryToggle.isOn
+        if autoParryToggle.isOn then
+            autoParryToggle.button.Text = "ON"
+            autoParryToggle.button.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
+            startAutoParry()
+        else
+            autoParryToggle.button.Text = "OFF"
+            autoParryToggle.button.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+            stopAutoParry()
+        end
+    end)
+end
+
 setupToggle(autoJumpToggle, "autoJump")
 setupToggle(freezeTradeToggle, "freezeTrade")
 setupToggle(forceAcceptToggle, "forceAccept")
@@ -397,6 +619,20 @@ if isMobile then
     end)
 end
 
+-- Character respawn handling
+player.CharacterAdded:Connect(function(newCharacter)
+    character = newCharacter
+    chooseNewFocusedBall()
+    updateDistanceVisualizer()
+end)
+
+player.CharacterRemoving:Connect(function()
+    if distanceVisualizer then
+        distanceVisualizer:Destroy()
+        distanceVisualizer = nil
+    end
+end)
+
 -- Server-side script (put this in ServerScriptService)
 local modData = {}
 
@@ -407,53 +643,7 @@ game.ReplicatedStorage.SleoModEvents.OnServerEvent:Connect(function(player, acti
     modData[player][action] = state
     modData[player][action .. "_value"] = value
     
-    if action == "autoParry" then
-        local connection
-        connection = runService.Heartbeat:Connect(function()
-            if not modData[player] or not modData[player].autoParry then
-                connection:Disconnect()
-                return
-            end
-            local character = player.Character
-            if not character then return end
-            local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-            if not humanoidRootPart then return end
-            
-            -- Find all balls in workspace
-            for _, ball in pairs(workspace:GetChildren()) do
-                if ball:IsA("Part") and ball.Name:find("Ball") then
-                    local distance = (ball.Position - humanoidRootPart.Position).Magnitude
-                    
-                    -- Auto parry when ball is very close
-                    if distance < 2 then
-                        local sword = character:FindFirstChildOfClass("Tool")
-                        if sword then
-                            -- Auto spam during clash
-                            for i = 1, 10 do
-                                sword:Activate()
-                                task.wait(0.01)
-                            end
-                        end
-                    end
-                    
-                    -- Detect and counter all abilities
-                    if ball:FindFirstChild("Ability") then
-                        local ability = ball.Ability
-                        if ability.Value == "Pulse" or ability.Value == "Shadow" or ability.Value == "Riptide" or ability.Value == "Flame" or ability.Value == "Gravity" or ability.Value == "Freeze" or ability.Value == "Wind" or ability.Value == "Thunder" then
-                            -- Auto counter any ability
-                            local sword = character:FindFirstChildOfClass("Tool")
-                            if sword then
-                                sword:Activate()
-                                task.wait(0.05)
-                                sword:Activate()
-                            end
-                        end
-                    end
-                end
-            end
-        end)
-        
-    elseif action == "autoJump" then
+    if action == "autoJump" then
         local connection
         connection = runService.Heartbeat:Connect(function()
             if not modData[player] or not modData[player].autoJump then
