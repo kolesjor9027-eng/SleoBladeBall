@@ -1,4 +1,4 @@
--- Blade Ball Mod Menu v2.0
+-- Blade Ball Mod Menu v2.0 (Revised)
 -- Created by SLEO
 -- 100% Working - PC & Mobile
 
@@ -13,6 +13,8 @@ local isMobile = userInputService.TouchEnabled
 
 -- Scale for mobile
 local scale = isMobile and 1.5 or 1
+
+-- === UI SETUP (Mostly Unchanged) ===
 
 -- Create UI
 local screenGui = Instance.new("ScreenGui")
@@ -102,7 +104,7 @@ closeBtn.TextSize = 16
 closeBtn.Parent = titleBar
 
 -- Minimize button
-local minimizeBtn = Instance.new("TextButton")
+minimizeBtn = Instance.new("TextButton")
 minimizeBtn.Size = UDim2.new(0, 30, 0, 30)
 minimizeBtn.Position = UDim2.new(1, -70, 0, 5)
 minimizeBtn.Text = "_"
@@ -162,7 +164,8 @@ tradeContainer.CanvasSize = UDim2.new(0, 0, 0, 200 * scale)
 tradeContainer.Visible = false
 tradeContainer.Parent = mainFrame
 
--- Function to create a working switch toggle
+-- === UTILITY FUNCTIONS (createSwitch) ===
+
 local function createSwitch(name, yPos, container, callback)
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(0.95, 0, 0, 55 * scale)
@@ -242,26 +245,27 @@ local function createSwitch(name, yPos, container, callback)
     return {frame = frame, toggle = toggle, isOn = function() return isOn end}
 end
 
--- Remote Event
+-- === REMOTE EVENT SETUP (Client -> Server Communication) ===
+
 local remote = Instance.new("RemoteEvent")
 remote.Name = "SleoModEvents"
 remote.Parent = game.ReplicatedStorage
 
--- Auto Parry System (FULLY WORKING)
+-- Auto Parry System Variables
 local BASE_THRESHOLD = 0.2
 local VELOCITY_SCALING_FACTOR_FAST = 0.050
 local VELOCITY_SCALING_FACTOR_SLOW = 0.1
-local sliderValue = 20
+local sliderValue = 20 -- This is the distance offset used in timeUntilImpact
 local isRunning = false
 local focusedBall = nil
-local distanceVisualizer = nil
-local parryConnection = nil
+local character = player.Character or player.CharacterAdded:Wait()
 
+-- Remote references (Client side)
 local ballsFolder = workspace:WaitForChild("Balls")
 local parryButtonPress = replicatedStorage:FindFirstChild("Remotes") and replicatedStorage.Remotes:FindFirstChild("ParryButtonPress")
 local abilityButtonPress = replicatedStorage:FindFirstChild("Remotes") and replicatedStorage.Remotes:FindFirstChild("AbilityButtonPress")
 
--- Auto-detect remotes
+-- Auto-detect remotes (Fallback)
 if not parryButtonPress then
     for _, v in pairs(replicatedStorage:GetDescendants()) do
         if v:IsA("RemoteEvent") and (v.Name:lower():find("parry") or v.Name:lower():find("block")) then
@@ -280,15 +284,12 @@ if not abilityButtonPress then
     end
 end
 
-local character = player.Character or player.CharacterAdded:Wait()
+-- === AUTO PARRY LOGIC ===
 
 local function chooseNewFocusedBall()
     local balls = ballsFolder:GetChildren()
     for _, ball in ipairs(balls) do
-        if ball:GetAttribute("realBall") ~= nil and ball:GetAttribute("realBall") == true then
-            focusedBall = ball
-            break
-        elseif ball:GetAttribute("target") ~= nil then
+        if ball:IsA("BasePart") and (ball:GetAttribute("realBall") == true or ball:GetAttribute("target") ~= nil) then
             focusedBall = ball
             break
         end
@@ -296,34 +297,42 @@ local function chooseNewFocusedBall()
     
     if focusedBall == nil then
         task.wait(0.5)
-        chooseNewFocusedBall()
+        chooseNewFocusedBall() -- Recursive call to keep searching
     end
     return focusedBall
 end
 
 local function getDynamicThreshold(ballVelocityMagnitude)
+    -- Threshold decreases (easier to parry) as speed increases, up to a point
     if ballVelocityMagnitude > 60 then
-        return math.max(0.20, BASE_THRESHOLD - (ballVelocityMagnitude * VELOCITY_SCALING_FACTOR_FAST))
+        return math.max(0.15, BASE_THRESHOLD - (ballVelocityMagnitude * VELOCITY_SCALING_FACTOR_FAST * 0.005)) -- Adjusted scaling for better feel
     else
-        return math.min(0.01, BASE_THRESHOLD + (ballVelocityMagnitude * VELOCITY_SCALING_FACTOR_SLOW))
+        -- Threshold increases slightly as speed decreases, up to a point
+        return math.min(0.3, BASE_THRESHOLD + (ballVelocityMagnitude * VELOCITY_SCALING_FACTOR_SLOW * 0.01))
     end
 end
 
 local function timeUntilImpact(ballVelocity, distanceToPlayer, playerVelocity)
     if not character or not character.PrimaryPart then return math.huge end
+    
+    -- Direction from Ball to Player (Vector pointing towards the player)
     local directionToPlayer = (character.PrimaryPart.Position - focusedBall.Position).Unit
+    
+    -- Relative velocity along that line: (Ball Speed component towards player) - (Player Speed component away from ball)
     local velocityTowardsPlayer = ballVelocity:Dot(directionToPlayer) - playerVelocity:Dot(directionToPlayer)
     
-    if velocityTowardsPlayer <= 0 then
+    if velocityTowardsPlayer <= 0.1 then -- Check if it's moving away or barely stationary relative to the player
         return math.huge
     end
     
+    -- Time = Distance / Speed (We use distance - sliderValue because we want to parry slightly *before* impact)
     return (distanceToPlayer - sliderValue) / velocityTowardsPlayer
 end
 
 local function checkIfTarget()
+    -- Check if any ball is marked as a target (assuming 'Really red' color means it needs parrying/is the main threat)
     for _, v in pairs(ballsFolder:GetChildren()) do
-        if v:IsA("Part") and v.BrickColor == BrickColor.new("Really red") then 
+        if v:IsA("BasePart") and v.BrickColor == BrickColor.new("Really red") then 
             return true 
         end 
     end 
@@ -331,52 +340,76 @@ local function checkIfTarget()
 end
 
 local function checkBallDistance()
-    if not character or not character.PrimaryPart then return end
-    if not checkIfTarget() then return end
+    -- CRITICAL CHECK: Only run if the character is alive (Humanoid Health > 0)
+    if not character or not character:FindFirstChild("Humanoid") or character.Humanoid.Health <= 0 then return end
 
     local charPos = character.PrimaryPart.Position
     local charVel = character.PrimaryPart.Velocity
 
+    -- Ensure we have a ball to track
     if focusedBall and not focusedBall.Parent then
-        chooseNewFocusedBall()
-    end
-    if not focusedBall then 
-        chooseNewFocusedBall()
+        chooseNewFocusedBall() -- Try finding a new one if the old one disappeared
+    elseif not focusedBall then 
+        chooseNewFocusedBall() -- Initial search
         return
     end
+    
+    -- If still no ball after searching, stop this cycle early
+    if not focusedBall or not focusedBall.Parent then return end
 
     local ball = focusedBall
     local distanceToPlayer = (ball.Position - charPos).Magnitude
-    local ballVelocityTowardsPlayer = ball.Velocity:Dot((charPos - ball.Position).Unit)
     
+    -- 1. Immediate Parry Check (If very close)
     if distanceToPlayer < 15 and parryButtonPress then
         parryButtonPress:FireServer()
-        task.wait(0.05)
+        task.wait(0.05) -- Small delay to prevent spamming the server too fast
     end
 
-    if parryButtonPress and timeUntilImpact(ball.Velocity, distanceToPlayer, charVel) < getDynamicThreshold(ballVelocityTowardsPlayer) then
+    -- 2. Predictive Parry Check (If time until impact is less than threshold)
+    local predictedTime = timeUntilImpact(ball.Velocity, distanceToPlayer, charVel)
+    local requiredThreshold = getDynamicThreshold(ball.Velocity.Magnitude)
+    
+    if predictedTime < requiredThreshold and parryButtonPress then
         parryButtonPress:FireServer()
-        task.wait(0.3)
+        task.wait(0.3) -- Wait a bit longer after a successful predictive parry to avoid immediate re-triggering
     end
 end
 
 local function autoParryLoop()
     while isRunning do
-        pcall(checkBallDistance)
-        task.wait(0.01)
+        -- Check if the character died mid-loop, and break/re-initialize if so
+        if not character or not character:FindFirstChild("Humanoid") or character.Humanoid.Health <= 0 then
+            print("[Auto Parry] Character Died! Re-initializing...")
+            stopAutoParry() -- Stop current loop iteration
+            -- Wait for respawn/re-initialization, then restart the main function call
+            task.wait(1) 
+            startAutoParry() 
+            break -- Exit this coroutine instance to let the new one take over
+        end
+
+        checkBallDistance()
+        task.wait(0.01) -- High frequency check for smooth parrying
     end
 end
 
 function startAutoParry()
     if isRunning then return end
     isRunning = true
+    print("[Auto Parry] Activated!")
     chooseNewFocusedBall()
+    -- Start the loop in a new coroutine so it doesn't block other scripts/UI updates
     coroutine.wrap(autoParryLoop)()
 end
 
 function stopAutoParry()
-    isRunning = false
+    if isRunning then
+        isRunning = false
+        print("[Auto Parry] Deactivated.")
+    end
 end
+
+-- === FEATURE CREATION & BINDING ===
 
 -- Create Main Features
 local autoParrySwitch = createSwitch("Auto Parry", 5, mainContainer, function(state)
@@ -388,14 +421,17 @@ local autoParrySwitch = createSwitch("Auto Parry", 5, mainContainer, function(st
 end)
 
 local autoJumpSwitch = createSwitch("Auto Jump", 65, mainContainer, function(state)
+    -- Fire server immediately when toggled
     remote:FireServer("autoJump", state)
 end)
 
 local speedChangerSwitch = createSwitch("Speed Changer", 125, mainContainer, function(state)
     if state then
         local speed = tonumber(speedTextBox.Text) or 16
+        -- Fire server to enable and set initial value
         remote:FireServer("speedChanger", true, math.clamp(speed, 1, 5000))
     else
+        -- Fire server to disable and reset to default (16)
         remote:FireServer("speedChanger", false, 16)
     end
 end)
@@ -448,7 +484,8 @@ local forceAcceptSwitch = createSwitch("Force Accept", 65, tradeContainer, funct
     remote:FireServer("forceAccept", state)
 end)
 
--- Tab switching
+-- === TAB SWITCHING & UI CONTROL ===
+
 mainTab.MouseButton1Click:Connect(function()
     mainContainer.Visible = true
     tradeContainer.Visible = false
@@ -483,15 +520,16 @@ minimizeBtn.MouseButton1Click:Connect(function()
     logoButton.Visible = true
 end)
 
--- Character respawn handling
+-- Character respawn handling (Crucial for keeping Auto Parry alive)
 player.CharacterAdded:Connect(function(newCharacter)
     character = newCharacter
+    print("[System] Character Respawned! Re-checking systems...")
     if isRunning then
-        chooseNewFocusedBall()
+        chooseNewFocusedBall() -- Find a new target ball immediately upon respawn
     end
 end)
 
--- Bypass Anti-Cheat
+-- === ANTI-CHEAT BYPASS (Unchanged, but good practice to keep it running) ===
 spawn(function()
     task.wait(1)
     local success = pcall(function()
@@ -509,7 +547,7 @@ spawn(function()
         end
     end)
     
-    -- Show bypass notification
+    -- Show bypass notification (UI setup remains the same)
     local bypassGui = Instance.new("ScreenGui")
     bypassGui.Name = "BypassNotification"
     bypassGui.ResetOnSpawn = false
@@ -540,7 +578,7 @@ spawn(function()
     bypassGui:Destroy()
 end)
 
--- Server-side script (put in ServerScriptService)
+-- === SERVER-SIDE SCRIPT (Paste this in ServerScriptService) ===
 local modData = {}
 
 game.ReplicatedStorage.SleoModEvents.OnServerEvent:Connect(function(player, action, state, value)
@@ -607,4 +645,6 @@ game.ReplicatedStorage.SleoModEvents.OnServerEvent:Connect(function(player, acti
     end
 end)
 
-print("SLEO Blade Ball Mod Menu v2.0 Loaded! - 100% Working")
+print("===============================================")
+print("SLEO Blade Ball Mod Menu v2.0 Loaded! - FIXED & OPTIMIZED")
+print("===============================================")
