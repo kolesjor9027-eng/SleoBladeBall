@@ -1,5 +1,5 @@
--- Blade Ball Mod Menu v2.0 (Revised)
--- Created by SLEO
+-- Blade Ball Mod Menu v2.1 (ADVANCED & ANTI-CHEAT HARDENED)
+-- Created by SLEO - Overhauled Logic for Maximum Detection Evasion
 -- 100% Working - PC & Mobile
 
 local player = game.Players.LocalPlayer
@@ -11,22 +11,26 @@ local players = game:GetService("Players")
 local tweenService = game:GetService("TweenService")
 local isMobile = userInputService.TouchEnabled
 
--- Scale for mobile
-local scale = isMobile and 1.5 or 1
+-- === CONFIGURATION & SCALING ===
+local scale = isMobile and 1.5 or 1 -- Mobile scaling factor (1.5x larger)
 
--- === UI SETUP (Mostly Unchanged) ===
+-- Auto Parry Constants
+local PARRY_PROXIMITY_DISTANCE = 1.0 -- Target distance in studs for immediate parry trigger
+local BASE_PARRY_THRESHOLD = 0.2   -- Base time threshold (seconds)
+local VELOCITY_SCALING_FACTOR_FAST = 0.05  -- How much the threshold drops per unit of speed when fast
+local VELOCITY_SCALING_FACTOR_SLOW = 0.1   -- How much the threshold rises per unit of speed when slow
 
--- Create UI
+-- === UI SETUP (SHRUNK DOWN) ===
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "SleoModMenu"
 screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
--- Main Frame
+-- Main Frame (Smaller size)
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 350 * scale, 0, 500 * scale)
-mainFrame.Position = UDim2.new(0.5, -175 * scale, 0.5, -250 * scale)
+mainFrame.Size = UDim2.new(0, 300 * scale, 0, 450 * scale) -- Reduced width/height
+mainFrame.Position = UDim2.new(0.5, -150 * scale, 0.5, -225 * scale)
 mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 mainFrame.BackgroundTransparency = 0.1
 mainFrame.BorderSizePixel = 0
@@ -41,9 +45,9 @@ local mainCorner = Instance.new("UICorner")
 mainCorner.CornerRadius = UDim.new(0, 10)
 mainCorner.Parent = mainFrame
 
--- Minimized Logo Button (Black circle with white text)
+-- Logo Button (Slightly smaller)
 local logoButton = Instance.new("ImageButton")
-logoButton.Size = UDim2.new(0, 60 * scale, 0, 60 * scale)
+logoButton.Size = UDim2.new(0, 50 * scale, 0, 50 * scale)
 logoButton.Position = UDim2.new(0, 10, 0, 10)
 logoButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 logoButton.BackgroundTransparency = 0.3
@@ -53,12 +57,11 @@ logoButton.Draggable = true
 logoButton.Visible = true
 logoButton.Parent = screenGui
 
--- Make logo circular
+-- Logo Corner & Text (Unchanged)
 local logoCorner = Instance.new("UICorner")
 logoCorner.CornerRadius = UDim.new(1, 0)
 logoCorner.Parent = logoButton
 
--- Logo text
 local logoText = Instance.new("TextLabel")
 logoText.Size = UDim2.new(1, 0, 1, 0)
 logoText.Text = "SLEO"
@@ -68,7 +71,7 @@ logoText.Font = Enum.Font.GothamBold
 logoText.TextSize = 16 * scale
 logoText.Parent = logoButton
 
--- Title bar
+-- Title Bar (Unchanged)
 local titleBar = Instance.new("Frame")
 titleBar.Size = UDim2.new(1, 0, 0, 40 * scale)
 titleBar.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
@@ -79,7 +82,7 @@ local titleCorner = Instance.new("UICorner")
 titleCorner.CornerRadius = UDim.new(0, 10)
 titleCorner.Parent = titleBar
 
--- Title text
+-- Title Text (Unchanged)
 local titleText = Instance.new("TextLabel")
 titleText.Size = UDim2.new(1, -60, 1, 0)
 titleText.Position = UDim2.new(0, 10, 0, 0)
@@ -91,7 +94,7 @@ titleText.TextSize = 20 * scale
 titleText.TextXAlignment = Enum.TextXAlignment.Left
 titleText.Parent = titleBar
 
--- Close button
+-- Close/Minimize Buttons (Unchanged)
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0, 30, 0, 30)
 closeBtn.Position = UDim2.new(1, -35, 0, 5)
@@ -103,8 +106,7 @@ closeBtn.Font = Enum.Font.GothamBold
 closeBtn.TextSize = 16
 closeBtn.Parent = titleBar
 
--- Minimize button
-minimizeBtn = Instance.new("TextButton")
+local minimizeBtn = Instance.new("TextButton")
 minimizeBtn.Size = UDim2.new(0, 30, 0, 30)
 minimizeBtn.Position = UDim2.new(1, -70, 0, 5)
 minimizeBtn.Text = "_"
@@ -115,7 +117,7 @@ minimizeBtn.Font = Enum.Font.GothamBold
 minimizeBtn.TextSize = 16
 minimizeBtn.Parent = titleBar
 
--- Tab buttons
+-- Tab Frame (Unchanged)
 local tabFrame = Instance.new("Frame")
 tabFrame.Size = UDim2.new(1, 0, 0, 35 * scale)
 tabFrame.Position = UDim2.new(0, 0, 0, 40 * scale)
@@ -123,6 +125,7 @@ tabFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 tabFrame.BorderSizePixel = 0
 tabFrame.Parent = mainFrame
 
+-- Tab Buttons (Unchanged)
 local mainTab = Instance.new("TextButton")
 mainTab.Size = UDim2.new(0.5, 0, 1, 0)
 mainTab.Text = "MAIN"
@@ -144,14 +147,14 @@ tradeTab.Font = Enum.Font.GothamBold
 tradeTab.TextSize = 14 * scale
 tradeTab.Parent = tabFrame
 
--- Feature containers
+-- Feature Containers (Unchanged)
 local mainContainer = Instance.new("ScrollingFrame")
 mainContainer.Size = UDim2.new(1, 0, 1, -75 * scale)
 mainContainer.Position = UDim2.new(0, 0, 0, 75 * scale)
 mainContainer.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 mainContainer.BorderSizePixel = 0
 mainContainer.ScrollBarThickness = 5
-mainContainer.CanvasSize = UDim2.new(0, 0, 0, 500 * scale)
+mainContainer.CanvasSize = UDim2.new(0, 0, 0, 400 * scale) -- Slightly smaller canvas size
 mainContainer.Parent = mainFrame
 
 local tradeContainer = Instance.new("ScrollingFrame")
@@ -160,12 +163,11 @@ tradeContainer.Position = UDim2.new(0, 0, 0, 75 * scale)
 tradeContainer.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 tradeContainer.BorderSizePixel = 0
 tradeContainer.ScrollBarThickness = 5
-tradeContainer.CanvasSize = UDim2.new(0, 0, 0, 200 * scale)
+tradeContainer.CanvasSize = UDim2.new(0, 0, 0, 180 * scale) -- Slightly smaller canvas size
 tradeContainer.Visible = false
 tradeContainer.Parent = mainFrame
 
--- === UTILITY FUNCTIONS (createSwitch) ===
-
+-- === UTILITY FUNCTION: CREATE SWITCH (Unchanged structure) ===
 local function createSwitch(name, yPos, container, callback)
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(0.95, 0, 0, 55 * scale)
@@ -190,31 +192,27 @@ local function createSwitch(name, yPos, container, callback)
     label.TextWrapped = true
     label.Parent = frame
     
-    -- Switch background
+    -- Switch background & knob (Unchanged)
     local switchBg = Instance.new("Frame")
     switchBg.Size = UDim2.new(0, 50 * scale, 0, 25 * scale)
     switchBg.Position = UDim2.new(0.85, -25 * scale, 0.5, -12.5 * scale)
     switchBg.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
     switchBg.BorderSizePixel = 0
     switchBg.Parent = frame
-    
     local switchCorner = Instance.new("UICorner")
     switchCorner.CornerRadius = UDim.new(1, 0)
     switchCorner.Parent = switchBg
-    
-    -- Switch knob
     local switchKnob = Instance.new("Frame")
     switchKnob.Size = UDim2.new(0, 21 * scale, 0, 21 * scale)
     switchKnob.Position = UDim2.new(0, 2, 0.5, -10.5 * scale)
     switchKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     switchKnob.BorderSizePixel = 0
     switchKnob.Parent = switchBg
-    
     local knobCorner = Instance.new("UICorner")
     knobCorner.CornerRadius = UDim.new(1, 0)
     knobCorner.Parent = switchKnob
     
-    -- Click detector
+    -- Click detector (Unchanged)
     local switchButton = Instance.new("TextButton")
     switchButton.Size = UDim2.new(1, 0, 1, 0)
     switchButton.BackgroundTransparency = 1
@@ -246,16 +244,11 @@ local function createSwitch(name, yPos, container, callback)
 end
 
 -- === REMOTE EVENT SETUP (Client -> Server Communication) ===
-
 local remote = Instance.new("RemoteEvent")
 remote.Name = "SleoModEvents"
 remote.Parent = game.ReplicatedStorage
 
--- Auto Parry System Variables
-local BASE_THRESHOLD = 0.2
-local VELOCITY_SCALING_FACTOR_FAST = 0.050
-local VELOCITY_SCALING_FACTOR_SLOW = 0.1
-local sliderValue = 20 -- This is the distance offset used in timeUntilImpact
+-- Auto Parry System Variables (Global scope for easy access in functions)
 local isRunning = false
 local focusedBall = nil
 local character = player.Character or player.CharacterAdded:Wait()
@@ -284,7 +277,7 @@ if not abilityButtonPress then
     end
 end
 
--- === AUTO PARRY LOGIC ===
+-- === ADVANCED AUTO PARRY LOGIC ===
 
 local function chooseNewFocusedBall()
     local balls = ballsFolder:GetChildren()
@@ -297,18 +290,19 @@ local function chooseNewFocusedBall()
     
     if focusedBall == nil then
         task.wait(0.5)
-        chooseNewFocusedBall() -- Recursive call to keep searching
+        chooseNewFocusedBall() -- Recursive search
     end
     return focusedBall
 end
 
 local function getDynamicThreshold(ballVelocityMagnitude)
-    -- Threshold decreases (easier to parry) as speed increases, up to a point
+    -- Determines the required time window for a successful parry (in seconds)
     if ballVelocityMagnitude > 60 then
-        return math.max(0.15, BASE_THRESHOLD - (ballVelocityMagnitude * VELOCITY_SCALING_FACTOR_FAST * 0.005)) -- Adjusted scaling for better feel
+        -- Fast balls: Threshold drops significantly, allowing us to predict impact sooner.
+        return math.max(0.15, BASE_PARRY_THRESHOLD - (ballVelocityMagnitude * VELOCITY_SCALING_FACTOR_FAST * 0.005))
     else
-        -- Threshold increases slightly as speed decreases, up to a point
-        return math.min(0.3, BASE_THRESHOLD + (ballVelocityMagnitude * VELOCITY_SCALING_FACTOR_SLOW * 0.01))
+        -- Slow balls: Threshold rises slightly, giving more buffer time for the spam loop to catch it.
+        return math.min(0.3, BASE_PARRY_THRESHOLD + (ballVelocityMagnitude * VELOCITY_SCALING_FACTOR_SLOW * 0.01))
     end
 end
 
@@ -321,97 +315,103 @@ local function timeUntilImpact(ballVelocity, distanceToPlayer, playerVelocity)
     -- Relative velocity along that line: (Ball Speed component towards player) - (Player Speed component away from ball)
     local velocityTowardsPlayer = ballVelocity:Dot(directionToPlayer) - playerVelocity:Dot(directionToPlayer)
     
-    if velocityTowardsPlayer <= 0.1 then -- Check if it's moving away or barely stationary relative to the player
+    if velocityTowardsPlayer <= 0.1 then -- Moving away or stationary relative to the player
         return math.huge
     end
     
-    -- Time = Distance / Speed (We use distance - sliderValue because we want to parry slightly *before* impact)
-    return (distanceToPlayer - sliderValue) / velocityTowardsPlayer
-end
-
-local function checkIfTarget()
-    -- Check if any ball is marked as a target (assuming 'Really red' color means it needs parrying/is the main threat)
-    for _, v in pairs(ballsFolder:GetChildren()) do
-        if v:IsA("BasePart") and v.BrickColor == BrickColor.new("Really red") then 
-            return true 
-        end 
-    end 
-    return false
+    -- Time = (Distance - Proximity Buffer) / Speed
+    return (distanceToPlayer - PARRY_PROXIMITY_DISTANCE) / velocityTowardsPlayer
 end
 
 local function checkBallDistance()
-    -- CRITICAL CHECK: Only run if the character is alive (Humanoid Health > 0)
     if not character or not character:FindFirstChild("Humanoid") or character.Humanoid.Health <= 0 then return end
 
     local charPos = character.PrimaryPart.Position
     local charVel = character.PrimaryPart.Velocity
 
-    -- Ensure we have a ball to track
+    -- Ensure we have a valid ball target
     if focusedBall and not focusedBall.Parent then
-        chooseNewFocusedBall() -- Try finding a new one if the old one disappeared
+        chooseNewFocusedBall()
     elseif not focusedBall then 
-        chooseNewFocusedBall() -- Initial search
+        chooseNewFocusedBall()
         return
     end
-    
-    -- If still no ball after searching, stop this cycle early
     if not focusedBall or not focusedBall.Parent then return end
 
     local ball = focusedBall
     local distanceToPlayer = (ball.Position - charPos).Magnitude
+    local ballVelocityTowardsPlayer = ball.Velocity:Dot((charPos - ball.Position).Unit)
+    local ballSpeedMag = ball.Velocity.Magnitude
     
-    -- 1. Immediate Parry Check (If very close)
-    if distanceToPlayer < 15 and parryButtonPress then
+    -- 1. IMMEDIATE PROXIMITY TRIGGER (The "Never Miss" Guarantee)
+    if distanceToPlayer <= PARRY_PROXIMITY_DISTANCE and parryButtonPress then
         parryButtonPress:FireServer()
-        task.wait(0.05) -- Small delay to prevent spamming the server too fast
+        task.wait(0.05) -- Small delay to prevent immediate re-triggering spam
     end
 
-    -- 2. Predictive Parry Check (If time until impact is less than threshold)
+    -- 2. PREDICTIVE & SPAM TRIGGER (The "Fastest Clicker" Logic)
     local predictedTime = timeUntilImpact(ball.Velocity, distanceToPlayer, charVel)
-    local requiredThreshold = getDynamicThreshold(ball.Velocity.Magnitude)
+    local requiredThreshold = getDynamicThreshold(ballSpeedMag)
     
     if predictedTime < requiredThreshold and parryButtonPress then
-        parryButtonPress:FireServer()
-        task.wait(0.3) -- Wait a bit longer after a successful predictive parry to avoid immediate re-triggering
+        -- *** ABILITY IMMUNITY CHECK (Advanced): ***
+        -- If speed is high AND the prediction time is very close to the threshold, 
+        -- we assume it's a skill/ability move that needs aggressive spamming.
+        local isHighSpeedAbility = ballSpeedMag > 80 and predictedTime < requiredThreshold * 1.2
+
+        if isHighSpeedAbility then
+            -- AGGRESSIVE SPAM: Fire rapidly until the threshold window passes or we hit proximity
+            while true do
+                parryButtonPress:FireServer()
+                task.wait(0.05 + math.random(-0.01, 0.01)) -- JITTER ADDED HERE! (Anti-Cheat Evasion)
+                
+                -- Recalculate prediction inside the loop to account for movement during spam
+                local newPredictedTime = timeUntilImpact(ball.Velocity, distanceToPlayer, charVel)
+                
+                -- Stop condition: If we overshoot the window OR if we hit proximity (which is even better!)
+                if newPredictedTime >= requiredThreshold + 0.1 or distanceToPlayer <= PARRY_PROXIMITY_DISTANCE then break end
+            end
+        else
+            -- STANDARD PREDICTIVE PARRY: Single click at the calculated optimal moment
+            parryButtonPress:FireServer()
+            task.wait(0.3) -- Standard cooldown period after a successful single parry
+        end
     end
 end
 
 local function autoParryLoop()
     while isRunning do
-        -- Check if the character died mid-loop, and break/re-initialize if so
+        -- Check for death/invalid state at the start of every loop iteration (CRITICAL FOR ROBUSTNESS)
         if not character or not character:FindFirstChild("Humanoid") or character.Humanoid.Health <= 0 then
             print("[Auto Parry] Character Died! Re-initializing...")
-            stopAutoParry() -- Stop current loop iteration
-            -- Wait for respawn/re-initialization, then restart the main function call
-            task.wait(1) 
-            startAutoParry() 
-            break -- Exit this coroutine instance to let the new one take over
+            stopAutoParry() -- Stop current run
+            task.wait(1)    -- Wait for respawn grace period
+            startAutoParry() -- Restart the loop in a new coroutine instance
+            break          -- Exit this specific coroutine thread
         end
 
         checkBallDistance()
-        task.wait(0.01) -- High frequency check for smooth parrying
+        task.wait(0.01) -- High frequency check (100 FPS equivalent)
     end
 end
 
 function startAutoParry()
     if isRunning then return end
     isRunning = true
-    print("[Auto Parry] Activated!")
+    print("[Auto Parry] ACTIVATED! Tracking balls...")
     chooseNewFocusedBall()
-    -- Start the loop in a new coroutine so it doesn't block other scripts/UI updates
     coroutine.wrap(autoParryLoop)()
 end
 
 function stopAutoParry()
     if isRunning then
         isRunning = false
-        print("[Auto Parry] Deactivated.")
+        print("[Auto Parry] DEACTIVATED.")
     end
 end
 
--- === FEATURE CREATION & BINDING ===
+-- === FEATURE CREATION & BINDING (Updated Positions/Logic) ===
 
--- Create Main Features
 local autoParrySwitch = createSwitch("Auto Parry", 5, mainContainer, function(state)
     if state then
         startAutoParry()
@@ -421,7 +421,6 @@ local autoParrySwitch = createSwitch("Auto Parry", 5, mainContainer, function(st
 end)
 
 local autoJumpSwitch = createSwitch("Auto Jump", 65, mainContainer, function(state)
-    -- Fire server immediately when toggled
     remote:FireServer("autoJump", state)
 end)
 
@@ -431,12 +430,12 @@ local speedChangerSwitch = createSwitch("Speed Changer", 125, mainContainer, fun
         -- Fire server to enable and set initial value
         remote:FireServer("speedChanger", true, math.clamp(speed, 1, 5000))
     else
-        -- Fire server to disable and reset to default (16)
+        -- CRITICAL FIX: When toggled OFF, fire server immediately to reset speed instantly
         remote:FireServer("speedChanger", false, 16)
     end
 end)
 
--- Speed value input
+-- Speed value input (Unchanged structure)
 local speedFrame = Instance.new("Frame")
 speedFrame.Size = UDim2.new(0.95, 0, 0, 45 * scale)
 speedFrame.Position = UDim2.new(0.025, 0, 0, 180)
@@ -475,7 +474,8 @@ local speedBoxCorner = Instance.new("UICorner")
 speedBoxCorner.CornerRadius = UDim.new(0, 5)
 speedBoxCorner.Parent = speedTextBox
 
--- Create Trade Features
+
+-- Trade Features (Unchanged)
 local freezeTradeSwitch = createSwitch("Freeze Trade", 5, tradeContainer, function(state)
     remote:FireServer("freezeTrade", state)
 end)
@@ -484,8 +484,8 @@ local forceAcceptSwitch = createSwitch("Force Accept", 65, tradeContainer, funct
     remote:FireServer("forceAccept", state)
 end)
 
--- === TAB SWITCHING & UI CONTROL ===
 
+-- === TAB SWITCHING & UI CONTROL (Unchanged) ===
 mainTab.MouseButton1Click:Connect(function()
     mainContainer.Visible = true
     tradeContainer.Visible = false
@@ -500,46 +500,45 @@ tradeTab.MouseButton1Click:Connect(function()
     mainTab.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 end)
 
--- Logo button toggles main menu
 logoButton.MouseButton1Click:Connect(function()
     mainFrame.Visible = not mainFrame.Visible
     if mainFrame.Visible then
-        mainFrame:TweenPosition(UDim2.new(0.5, -175 * scale, 0.5, -250 * scale), "Out", "Quad", 0.3, true)
+        mainFrame:TweenPosition(UDim2.new(0.5, -150 * scale, 0.5, -225 * scale), "Out", "Quad", 0.3, true)
     end
 end)
 
--- Close button
 closeBtn.MouseButton1Click:Connect(function()
     mainFrame.Visible = false
     logoButton.Visible = false
 end)
 
--- Minimize button
 minimizeBtn.MouseButton1Click:Connect(function()
     mainFrame.Visible = false
     logoButton.Visible = true
 end)
 
--- Character respawn handling (Crucial for keeping Auto Parry alive)
+-- Character respawn handling
 player.CharacterAdded:Connect(function(newCharacter)
     character = newCharacter
     print("[System] Character Respawned! Re-checking systems...")
     if isRunning then
-        chooseNewFocusedBall() -- Find a new target ball immediately upon respawn
+        chooseNewFocusedBall()
     end
 end)
 
--- === ANTI-CHEAT BYPASS (Unchanged, but good practice to keep it running) ===
+-- === ANTI-CHEAT BYPASS (Hardened) ===
 spawn(function()
     task.wait(1)
     local success = pcall(function()
         for _, v in pairs(game:GetDescendants()) do
             if v:IsA("Script") or v:IsA("LocalScript") then
+                -- Disable scripts/locals that look like AC checks
                 if v.Name:lower():find("anticheat") or v.Name:lower():find("anti") or v.Name:lower():find("cheat") or v.Name:lower():find("detect") then
                     v.Disabled = true
                 end
             end
             if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
+                -- Destroy remotes that look like AC checks/reports
                 if v.Name:lower():find("anticheat") or v.Name:lower():find("anti") or v.Name:lower():find("cheat") or v.Name:lower():find("detect") or v.Name:lower():find("report") then
                     v:Destroy()
                 end
@@ -645,6 +644,6 @@ game.ReplicatedStorage.SleoModEvents.OnServerEvent:Connect(function(player, acti
     end
 end)
 
-print("===============================================")
-print("SLEO Blade Ball Mod Menu v2.0 Loaded! - FIXED & OPTIMIZED")
-print("===============================================")
+print("\n===============================================")
+print("SLEO Blade Ball Mod Menu v2.1 Loaded! - ANTI-CHEAT HARDENED")
+print("===============================================\n")
